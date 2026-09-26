@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Slack User Icon Downloader
 // @namespace    slack-user-icon-downloader
-// @version      2.4.1
-// @description  ワークスペースのメンバーのアイコンを元画像で取得し、選択したユーザーを「氏名_表示名.拡張子」で ZIP ダウンロード
+// @version      2.5.0
+// @description  ワークスペースのメンバーのアイコンを元画像で取得し、選択したユーザーを任意のファイル名テンプレートで ZIP ダウンロード
 // @author       Seiya Funaoka
 // @license      MIT
 // @homepageURL  https://github.com/SeiyaFunaokaJP/slack-user-icon-downloader
@@ -24,6 +24,8 @@
     includeBots: false,        // Bot も含める
     skipDefaultAvatar: true,   // デフォルトアイコンの人は除外
     pageSize: 20,              // 1ページの表示人数
+    // 保存ファイル名 (拡張子は自動)。{real} 等はプレースホルダー、[ ] 内は空または重複なら省略
+    template: '{real}[_{display}]',
     concurrency: 2,            // 同時ダウンロード数
     // 画像リクエストの最小間隔(秒)。全体で共有するので並列数に関係なく最大 1/interval 件/秒。
     // 0.5秒 = 2件/秒。Slack 画面をスクロールした時に一度に数十枚読む通常利用より十分穏やか。
@@ -210,18 +212,54 @@
   }
   // ZIP-END
 
-  function toRow(u) {
+  // ---- ファイル名テンプレート ----
+  // {key} を置換。[ ... ] は中のプレースホルダーが空、またはすでに名前に含まれる値と同じなら丸ごと省略
+  const PLACEHOLDERS = {
+    real: '氏名', display: '表示名', username: 'ユーザー名', id: 'ユーザーID', title: '役職',
+  };
+  function placeholderVars(u) {
+    const p = u.profile || {};
+    return {
+      real: p.real_name || u.real_name || '',
+      display: p.display_name || '',
+      username: u.name || '',
+      id: u.id,
+      title: p.title || '',
+    };
+  }
+  function renderTemplate(tpl, vars) {
+    // トップレベルを [ ] の内外で分割 (入れ子なし)
+    const parts = [];
+    const re = /\[([^\[\]]*)\]/g;
+    let last = 0, m;
+    while ((m = re.exec(tpl))) {
+      if (m.index > last) parts.push({ opt: false, text: tpl.slice(last, m.index) });
+      parts.push({ opt: true, text: m[1] });
+      last = re.lastIndex;
+    }
+    if (last < tpl.length) parts.push({ opt: false, text: tpl.slice(last) });
+
+    const keysOf = (t) => [...t.matchAll(/\{(\w+)\}/g)].map(x => x[1]);
+    const fill = (t) => t.replace(/\{(\w+)\}/g, (all, k) => (k in vars ? vars[k] : all));
+    const used = new Set(parts.filter(x => !x.opt).flatMap(x => keysOf(x.text)).map(k => vars[k]).filter(Boolean));
+    return parts.map(x => {
+      if (!x.opt) return fill(x.text);
+      const vals = keysOf(x.text).map(k => vars[k]);
+      if (vals.some(v => !v || used.has(v))) return '';
+      vals.forEach(v => used.add(v));
+      return fill(x.text);
+    }).join('').trim();
+  }
+
+  function toRow(u, template) {
     const p = u.profile || {};
     const display = p.display_name || p.real_name || u.real_name || u.name || u.id;
     const realName = p.real_name || u.real_name || '';
-    // 「氏名_表示名」。どちらかが空、または同じなら片方だけ
-    const fileName = realName && p.display_name && realName !== p.display_name
-      ? `${realName}_${p.display_name}` : (realName || display);
     return {
       id: u.id,
       display,
       realName,
-      baseName: sanitize(fileName),
+      baseName: sanitize(renderTemplate(template, placeholderVars(u)) || u.id),
       source: p.image_original ? 'オリジナル' : (p.is_custom_image ? '1024以下' : 'デフォルト'),
       status: [u.deleted && '退会', u.is_bot && 'Bot'].filter(Boolean).join(' / '),
       deleted: !!u.deleted,
@@ -246,6 +284,10 @@
     .settings label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
     .settings select, .settings input[type=number] { font-size: 13px; padding: 2px 4px; }
     .settings input[type=number] { width: 52px; }
+    .settings .tpl { flex-basis: 100%; flex-wrap: wrap; cursor: default; }
+    .settings .tpl input { width: 220px; font: 13px ui-monospace, Consolas, monospace; padding: 2px 6px; }
+    .settings .hint { color: #8a8a8a; font-size: 12px; }
+    .settings .hint code { font: 12px ui-monospace, Consolas, monospace; }
     .body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 18px; min-height: 120px; }
     .empty { color: #616061; padding: 40px 0; text-align: center; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -308,6 +350,9 @@
           <label>1ページ <select id="s-pageSize"><option>10</option><option>20</option><option>50</option><option>100</option></select> 人</label>
           <label>同時DL <input type="number" id="s-conc" min="1" max="4"></label>
           <label>間隔 <input type="number" id="s-interval" min="0.2" max="10" step="0.1"> 秒</label>
+          <label class="tpl">ファイル名 <input type="text" id="s-template" spellcheck="false"> .拡張子
+            <span class="hint">${Object.entries(PLACEHOLDERS).map(([k, v]) => `<code>{${k}}</code> ${v}`).join(' / ')} / <code>[ ]</code> 内は空・重複なら省略</span>
+          </label>
           <button class="btn primary" id="fetch">ユーザー一覧を取得</button>
         </div>
         <div class="body" id="body"><div class="empty">「ユーザー一覧を取得」を押してください</div></div>
@@ -346,6 +391,7 @@
     $('s-pageSize').value = String(s.pageSize);
     $('s-conc').value = String(s.concurrency);
     $('s-interval').value = String(s.interval);
+    $('s-template').value = s.template;
   }
 
   function readSettingsUI() {
@@ -359,6 +405,7 @@
     s.interval = Math.min(10, Math.max(MIN_INTERVAL, Number.isFinite(iv) ? iv : DEFAULTS.interval));
     $('s-conc').value = String(s.concurrency);
     $('s-interval').value = String(s.interval);
+    s.template = $('s-template').value.trim() || DEFAULTS.template;
   }
 
   function applyFilter() {
@@ -366,7 +413,7 @@
     const s = state.settings;
     state.rows = state.rawUsers
       .filter(u => u.id !== 'USLACKBOT')
-      .map(toRow)
+      .map(u => toRow(u, s.template))
       .filter(r =>
         (s.includeDeactivated || !r.deleted) &&
         (s.includeBots || !r.bot) &&
@@ -388,7 +435,7 @@
     $('next').disabled = state.busy || state.page >= total;
     $('selCount').textContent = state.rawUsers ? `選択 ${state.selected.size} / ${state.rows.length} 人` : '';
     $('download').disabled = state.busy || state.selected.size === 0;
-    for (const id of ['fetch', 'selAll', 'selNone', 's-skipDefault', 's-deact', 's-bots', 's-pageSize', 's-conc', 's-interval']) $(id).disabled = state.busy;
+    for (const id of ['fetch', 'selAll', 'selNone', 's-skipDefault', 's-deact', 's-bots', 's-pageSize', 's-conc', 's-interval', 's-template']) $(id).disabled = state.busy;
     $('cancel').hidden = !state.busy;
 
     if (!state.rawUsers) return;
@@ -507,7 +554,9 @@
 
   $('close').addEventListener('click', closeModal);
   $('backdrop').addEventListener('click', (e) => { if (e.target === $('backdrop')) closeModal(); });
+  // モーダル内のキー入力を Slack 本体 (ショートカットやメッセージ欄へのフォーカス移動) に渡さない
   root.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); e.stopPropagation(); });
+  for (const type of ['keypress', 'keyup']) root.addEventListener(type, (e) => e.stopPropagation());
   $('fetch').addEventListener('click', onFetch);
   $('download').addEventListener('click', onDownload);
   $('cancel').addEventListener('click', () => { state.cancel = true; setStatus('中止しています...'); });
@@ -522,6 +571,9 @@
   }
   $('s-conc').addEventListener('change', readSettingsUI);
   $('s-interval').addEventListener('change', readSettingsUI);
+  // ファイル名テンプレートは入力中も表の「保存ファイル名」に即反映 (ページ・選択は維持)
+  $('s-template').addEventListener('input', () => { readSettingsUI(); applyFilter(); });
+  $('s-template').addEventListener('change', syncSettingsUI); // 空欄で確定したら既定値を表示
 
   $('body').addEventListener('change', (e) => {
     const t = e.target;
