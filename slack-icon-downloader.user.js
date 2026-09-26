@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Slack User Icon Downloader
 // @namespace    slack-user-icon-downloader
-// @version      2.4.0
+// @version      2.4.1
 // @description  ワークスペースのメンバーのアイコンを元画像で取得し、選択したユーザーを「氏名_表示名.拡張子」で ZIP ダウンロード
 // @author       Seiya Funaoka
 // @license      MIT
@@ -29,8 +29,6 @@
     // 0.5秒 = 2件/秒。Slack 画面をスクロールした時に一度に数十枚読む通常利用より十分穏やか。
     interval: 0.5,
   };
-  // v2.2 以前が保存していた設定を掃除
-  try { localStorage.removeItem('slackIconDL_settings'); } catch (_) { /* 無視 */ }
 
   // ---- セッショントークン取得 (Slack Web クライアントが localStorage に保持しているもの) ----
   function getTeam() {
