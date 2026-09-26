@@ -6,8 +6,8 @@
 // @author       Seiya Funaoka
 // @license      MIT
 // @homepageURL  https://github.com/SeiyaFunaokaJP/slack-user-icon-downloader
-// @downloadURL  https://raw.githubusercontent.com/SeiyaFunaokaJP/slack-user-icon-downloader/main/slack-icon-downloader.user.js
-// @updateURL    https://raw.githubusercontent.com/SeiyaFunaokaJP/slack-user-icon-downloader/main/slack-icon-downloader.user.js
+// @downloadURL  https://github.com/SeiyaFunaokaJP/slack-user-icon-downloader/raw/refs/heads/main/slack-icon-downloader.user.js
+// @updateURL    https://github.com/SeiyaFunaokaJP/slack-user-icon-downloader/raw/refs/heads/main/slack-icon-downloader.user.js
 // @match        https://app.slack.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      slack-edge.com

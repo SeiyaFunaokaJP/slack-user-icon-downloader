@@ -6,7 +6,7 @@ Slack App の作成や管理者権限は不要で、ブラウザでログイン�
 ## インストール
 
 1. [Tampermonkey](https://www.tampermonkey.net/) または [Violentmonkey](https://violentmonkey.github.io/) をブラウザに入れる
-2. [slack-icon-downloader.user.js](https://raw.githubusercontent.com/SeiyaFunaokaJP/slack-user-icon-downloader/main/slack-icon-downloader.user.js) を開いてインストール
+2. [slack-icon-downloader.user.js](https://github.com/SeiyaFunaokaJP/slack-user-icon-downloader/raw/refs/heads/main/slack-icon-downloader.user.js) を開いてインストール
 
 ## アップデート
 
